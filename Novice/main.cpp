@@ -4,7 +4,7 @@
 
 const char kWindowTitle[] = "GC2B_03_ニャン_トー_セッ";
 
-// ウィンドウサイズ
+
 const int kWindowWidth = 1280;
 const int kWindowHeight = 720;
 
@@ -18,7 +18,7 @@ struct Matrix4x4 {
 	float m[4][4];
 };
 
-// 外積
+
 Vector3 Cross(const Vector3& v1, const Vector3& v2) {
 	Vector3 result;
 	result.x = v1.y * v2.z - v1.z * v2.y;
@@ -27,7 +27,7 @@ Vector3 Cross(const Vector3& v1, const Vector3& v2) {
 	return result;
 }
 
-// アフィン変換行列
+
 Matrix4x4 MakeAffineMatrix(const Vector3& scale, const Vector3& rotate, const Vector3& translate) {
 
 	Matrix4x4 matrix{};
@@ -64,7 +64,7 @@ Matrix4x4 MakeAffineMatrix(const Vector3& scale, const Vector3& rotate, const Ve
 	return matrix;
 }
 
-// 行列の乗算
+
 Matrix4x4 Multiply(const Matrix4x4& m1, const Matrix4x4& m2) {
 	Matrix4x4 result{};
 	for (int i = 0; i < 4; ++i) {
@@ -146,7 +146,7 @@ Matrix4x4 Inverse(const Matrix4x4& m) {
 	return result;
 }
 
-// 透視投影行列
+
 Matrix4x4 MakePerspectiveFovMatrix(float fovY, float aspectRatio, float nearClip, float farClip) {
 	Matrix4x4 matrix{};
 	float f = 1.0f / tanf(fovY / 2.0f);
@@ -158,7 +158,6 @@ Matrix4x4 MakePerspectiveFovMatrix(float fovY, float aspectRatio, float nearClip
 	return matrix;
 }
 
-// ビューポート行列
 Matrix4x4 MakeViewportMatrix(float left, float top, float width, float height, float minDepth, float maxDepth) {
 	Matrix4x4 matrix{};
 	matrix.m[0][0] = width / 2.0f;
@@ -171,7 +170,6 @@ Matrix4x4 MakeViewportMatrix(float left, float top, float width, float height, f
 	return matrix;
 }
 
-// 座標変換 (w除算を含む)
 Vector3 Transform(const Vector3& vector, const Matrix4x4& matrix) {
 	Vector3 result;
 	result.x = vector.x * matrix.m[0][0] + vector.y * matrix.m[1][0] + vector.z * matrix.m[2][0] + 1.0f * matrix.m[3][0];
@@ -182,6 +180,14 @@ Vector3 Transform(const Vector3& vector, const Matrix4x4& matrix) {
 	result.y /= w;
 	result.z /= w;
 	return result;
+}
+
+static const int kColumnWidth = 60;
+void VectorScreenPrintf(int x, int y, const Vector3& vector, const char* label) {
+	Novice::ScreenPrintf(x, y, "%.02f", vector.x);
+	Novice::ScreenPrintf(x + kColumnWidth, y, "%.02f", vector.y);
+	Novice::ScreenPrintf(x + kColumnWidth * 2, y, "%.02f", vector.z);
+	Novice::ScreenPrintf(x + kColumnWidth * 3, y, "%s", label);
 }
 
 // Windowsアプリでのエントリーポイント(main関数)
@@ -207,6 +213,11 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 	// 三角形のtranslateとrotate
 	Vector3 translate{};
 	Vector3 rotate{};
+
+	Vector3 v1{1.0f, 3.0f, -5.0f};
+	Vector3 v2{4.0f, -1.0f, 2.0f};
+	Vector3 cross = Cross(v1, v2);
+ 
 
 	// ウィンドウの×ボタンが押されるまでループ
 	while (Novice::ProcessMessage() == 0) {
@@ -258,9 +269,10 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 		/// ↓描画処理ここから
 		///
 
-		// 描画
 		Novice::DrawTriangle(
 		    int(screenVertices[0].x), int(screenVertices[0].y), int(screenVertices[1].x), int(screenVertices[1].y), int(screenVertices[2].x), int(screenVertices[2].y), RED, kFillModeSolid);
+
+		VectorScreenPrintf(0, 0, cross, "Cross");
 
 		///
 		/// ↑描画処理ここまで
