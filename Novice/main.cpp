@@ -31,7 +31,6 @@ Vector3 Add(const Vector3& a, const Vector3& b) { return {a.x + b.x, a.y + b.y, 
 
 Vector3 Subtract(const Vector3& a, const Vector3& b) { return {a.x - b.x, a.y - b.y, a.z - b.z}; }
 
-// スカラー倍 (Multiply は行列同士の積で既に使っているので、引数の型でオーバーロード)
 Vector3 Multiply(float s, const Vector3& v) { return {s * v.x, s * v.y, s * v.z}; }
 
 float Dot(const Vector3& a, const Vector3& b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
@@ -146,8 +145,7 @@ Matrix4x4 MakeViewportMatrix(float left, float top, float width, float height, f
 	return r;
 }
 
-// 余因子展開による 一般の 4x4 逆行列
-// (回転 + 平行移動の両方に対応。これがないと viewMatrix がカメラの回転を反映できない)
+
 Matrix4x4 Inverse(const Matrix4x4& m) {
 	Matrix4x4 r;
 	float A2323 = m.m[2][2] * m.m[3][3] - m.m[2][3] * m.m[3][2];
@@ -193,18 +191,17 @@ Matrix4x4 Inverse(const Matrix4x4& m) {
 	return r;
 }
 
-// v1 を v2 に射影したベクトル
 Vector3 Project(const Vector3& v1, const Vector3& v2) {
 	float v2LenSq = Dot(v2, v2);
 	float t = Dot(v1, v2) / v2LenSq;
 	return Multiply(t, v2);
 }
 
-// 線分上で point に最も近い点
+
 Vector3 ClosestPoint(const Vector3& point, const Segment& segment) {
 	Vector3 v = Subtract(point, segment.origin);
 	float t = Dot(v, segment.diff) / Dot(segment.diff, segment.diff);
-	// 線分なので 0 ～ 1 にクランプ
+	
 	if (t < 0.0f)
 		t = 0.0f;
 	if (t > 1.0f)
@@ -213,29 +210,30 @@ Vector3 ClosestPoint(const Vector3& point, const Segment& segment) {
 }
 
 void DrawGrid(const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMatrix) {
-	const float kGridHalfWidth = 2.0f;                                      // Gridの半分の幅
-	const uint32_t kSubdivision = 10;                                       // 分割数
-	const float kGridEvery = (kGridHalfWidth * 2.0f) / float(kSubdivision); // 1つ分の長さ
+	const float kGridHalfWidth = 2.0f;                                      
+	const uint32_t kSubdivision = 10;                                     
+	const float kGridEvery = (kGridHalfWidth * 2.0f) / float(kSubdivision); 
 
-	// 奥から手前への線を順々に引いていく (X 軸方向に並ぶ、Z 方向に伸びる線)
+	
 	for (uint32_t xIndex = 0; xIndex <= kSubdivision; ++xIndex) {
-		// 上の情報を使ってワールド座標系上の始点と終点を求める
+		
 		float x = -kGridHalfWidth + kGridEvery * float(xIndex);
 		Vector3 worldStart = {x, 0.0f, -kGridHalfWidth};
 		Vector3 worldEnd = {x, 0.0f, kGridHalfWidth};
 
-		// スクリーン座標系まで変換をかける
+	
 		Vector3 ndcStart = Transform(worldStart, viewProjectionMatrix);
 		Vector3 ndcEnd = Transform(worldEnd, viewProjectionMatrix);
 		Vector3 screenStart = Transform(ndcStart, viewportMatrix);
 		Vector3 screenEnd = Transform(ndcEnd, viewportMatrix);
 
-		// 変換した座標を使って表示。色は薄い灰色(0xAAAAAAFF)、原点を通る線は黒
+		
+
 		unsigned int color = (xIndex == kSubdivision / 2) ? 0x000000FF : 0xAAAAAAFF;
 		Novice::DrawLine(int(screenStart.x), int(screenStart.y), int(screenEnd.x), int(screenEnd.y), color);
 	}
 
-	// 左から右への線を順々に引いていく (奥から手前が左右に変わるだけ)
+	
 	for (uint32_t zIndex = 0; zIndex <= kSubdivision; ++zIndex) {
 		float z = -kGridHalfWidth + kGridEvery * float(zIndex);
 		Vector3 worldStart = {-kGridHalfWidth, 0.0f, z};
@@ -252,20 +250,20 @@ void DrawGrid(const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMa
 }
 
 void DrawSphere(const Sphere& sphere, const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMatrix, uint32_t color) {
-	const uint32_t kSubdivision = 16; // 分割数
+	const uint32_t kSubdivision = 16; 
 	const float kPi = 3.14159265358979323846f;
-	const float kLonEvery = 2.0f * kPi / float(kSubdivision); // 経度の1つ分
-	const float kLatEvery = kPi / float(kSubdivision);        // 緯度の1つ分
+	const float kLonEvery = 2.0f * kPi / float(kSubdivision); 
+	const float kLatEvery = kPi / float(kSubdivision);        
 
-	// 緯度方向に分割 -π/2 ～ π/2
+	
 	for (uint32_t latIndex = 0; latIndex < kSubdivision; ++latIndex) {
 		float lat = -kPi / 2.0f + kLatEvery * float(latIndex);
 
-		// 経度方向に分割 0 ～ 2π
+		
 		for (uint32_t lonIndex = 0; lonIndex < kSubdivision; ++lonIndex) {
 			float lon = kLonEvery * float(lonIndex);
 
-			// 球面上の 3 点 (a, b, c) をワールド座標系で求める
+			
 			Vector3 a, b, c;
 			a.x = sphere.center.x + sphere.radius * std::cos(lat) * std::cos(lon);
 			a.y = sphere.center.y + sphere.radius * std::sin(lat);
@@ -279,12 +277,12 @@ void DrawSphere(const Sphere& sphere, const Matrix4x4& viewProjectionMatrix, con
 			c.y = sphere.center.y + sphere.radius * std::sin(lat);
 			c.z = sphere.center.z + sphere.radius * std::cos(lat) * std::sin(lon + kLonEvery);
 
-			// スクリーン座標系まで変換
+			
 			Vector3 sa = Transform(Transform(a, viewProjectionMatrix), viewportMatrix);
 			Vector3 sb = Transform(Transform(b, viewProjectionMatrix), viewportMatrix);
 			Vector3 sc = Transform(Transform(c, viewProjectionMatrix), viewportMatrix);
 
-			// a→b (経線方向) と a→c (緯線方向) の線を描く
+		
 			Novice::DrawLine(int(sa.x), int(sa.y), int(sb.x), int(sb.y), color);
 			Novice::DrawLine(int(sa.x), int(sa.y), int(sc.x), int(sc.y), color);
 		}
@@ -332,16 +330,16 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 		Matrix4x4 viewProjectionMatrix = Multiply(viewMatrix, projectionMatrix);
 		Matrix4x4 viewportMatrix = MakeViewportMatrix(0.0f, 0.0f, float(kWindowWidth), float(kWindowHeight), 0.0f, 1.0f);
 
-		// 線分上で point に最も近い点を求める
+		
 		Vector3 closestPoint = ClosestPoint(point, segment);
-		// 検算用: point を線分の方向に射影したベクトル
+		
 		Vector3 project = Project(Subtract(point, segment.origin), segment.diff);
 
-		// point と closestPoint を 1cm の球として描画するための準備
+		
 		Sphere pointSphere{point, 0.01f};
 		Sphere closestPointSphere{closestPoint, 0.01f};
 
-		// ImGui によるデバッグ表示
+		
 		ImGui::Begin("Window");
 		ImGui::DragFloat3("CameraTranslate", &cameraTranslate.x, 0.01f);
 		ImGui::DragFloat3("CameraRotate", &cameraRotate.x, 0.01f);
@@ -361,14 +359,14 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 
 		DrawGrid(viewProjectionMatrix, viewportMatrix);
 
-		// 線分は両端をスクリーン座標系まで変換して Novice::DrawLine で描画
+	
 		Vector3 segStart = Transform(Transform(segment.origin, viewProjectionMatrix), viewportMatrix);
 		Vector3 segEnd = Transform(Transform(Add(segment.origin, segment.diff), viewProjectionMatrix), viewportMatrix);
-		Novice::DrawLine(int(segStart.x), int(segStart.y), int(segEnd.x), int(segEnd.y), 0xFFFFFFFF /*WHITE*/);
+		Novice::DrawLine(int(segStart.x), int(segStart.y), int(segEnd.x), int(segEnd.y), 0xFFFFFFFF );
 
-		// もとの点は赤、最近接点は黒
-		DrawSphere(pointSphere, viewProjectionMatrix, viewportMatrix, 0xFF0000FF /*RED*/);
-		DrawSphere(closestPointSphere, viewProjectionMatrix, viewportMatrix, 0x000000FF /*BLACK*/);
+		
+		DrawSphere(pointSphere, viewProjectionMatrix, viewportMatrix, 0xFF0000FF );
+		DrawSphere(closestPointSphere, viewProjectionMatrix, viewportMatrix, 0x000000FF );
 
 		///
 		/// ↑描画処理ここまで
