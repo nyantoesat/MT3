@@ -3,7 +3,6 @@
 
 const char kWindowTitle[] = "GC2B_03_ニャン_トー_セッ";
 
-
 struct Vector3 {
 	float x;
 	float y;
@@ -17,31 +16,31 @@ struct Matrix4x4 {
 Matrix4x4 MakeRotateXMatrix(float radiam) {
 	Matrix4x4 rotateXMatrix = {};
 	rotateXMatrix.m[0][0] = 1.0f;
-	rotateXMatrix.m[1][1] = cosf(radiam);
-	rotateXMatrix.m[1][2] = sinf(radiam);
-	rotateXMatrix.m[2][1] = -sinf(radiam);
-	rotateXMatrix.m[2][2] = cosf(radiam);
+	rotateXMatrix.m[1][1] = std::cos(radiam);
+	rotateXMatrix.m[1][2] = std::sin(radiam);
+	rotateXMatrix.m[2][1] = -std::sin(radiam);
+	rotateXMatrix.m[2][2] = std::cos(radiam);
 	rotateXMatrix.m[3][3] = 1.0f;
 	return rotateXMatrix;
 }
 
 Matrix4x4 MakeRotateYMatrix(float radiam) {
 	Matrix4x4 rotateYMatrix = {};
-	rotateYMatrix.m[0][0] = cosf(radiam);
-	rotateYMatrix.m[0][2] = -sinf(radiam);
+	rotateYMatrix.m[0][0] = std::cos(radiam);
+	rotateYMatrix.m[0][2] = -std::sin(radiam);
 	rotateYMatrix.m[1][1] = 1.0f;
-	rotateYMatrix.m[2][0] = sinf(radiam);
-	rotateYMatrix.m[2][2] = cosf(radiam);
+	rotateYMatrix.m[2][0] = std::sin(radiam);
+	rotateYMatrix.m[2][2] = std::cos(radiam);
 	rotateYMatrix.m[3][3] = 1.0f;
 	return rotateYMatrix;
 }
 
 Matrix4x4 MakeRotateZMatrix(float radiam) {
 	Matrix4x4 rotateZMatrix = {};
-	rotateZMatrix.m[0][0] = cosf(radiam);
-	rotateZMatrix.m[0][1] = sinf(radiam);
-	rotateZMatrix.m[1][0] = -sinf(radiam);
-	rotateZMatrix.m[1][1] = cosf(radiam);
+	rotateZMatrix.m[0][0] = std::cos(radiam);
+	rotateZMatrix.m[0][1] = std::sin(radiam);
+	rotateZMatrix.m[1][0] = -std::sin(radiam);
+	rotateZMatrix.m[1][1] = std::cos(radiam);
 	rotateZMatrix.m[2][2] = 1.0f;
 	rotateZMatrix.m[3][3] = 1.0f;
 	return rotateZMatrix;
@@ -97,7 +96,6 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 
 	Vector3 rotate = {0.4f, 1.43f, -0.8f};
 
-
 	// ウィンドウの×ボタンが押されるまでループ
 	while (Novice::ProcessMessage() == 0) {
 		// フレームの開始
@@ -123,11 +121,11 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 		/// ↓描画処理ここから
 		///
 
-		MatrixScreenPrintf(0, 0, rotateXMatrix, "rotateXMatrix");	
-		MatrixScreenPrintf(0, kRowHeight *5 , rotateYMatrix, "rotateYMatrix");
-		MatrixScreenPrintf(0, kRowHeight * 5 * 2, rotateZMatrix, "rotateZMatrix");	
+		MatrixScreenPrintf(0, 0, rotateXMatrix, "rotateXMatrix");
+		MatrixScreenPrintf(0, kRowHeight * 5, rotateYMatrix, "rotateYMatrix");
+		MatrixScreenPrintf(0, kRowHeight * 5 * 2, rotateZMatrix, "rotateZMatrix");
 		MatrixScreenPrintf(0, kRowHeight * 5 * 3, rotateXYZMatrix, "rotateXYZMatrix");
-		
+
 		///
 		/// ↑描画処理ここまで
 		///
