@@ -277,21 +277,21 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 	char keys[256] = {0};
 	char preKeys[256] = {0};
 
-	// カメラ
+	
 	Vector3 cameraScale = {1.0f, 1.0f, 1.0f};
 	Vector3 cameraRotate = {0.26f, 0.0f, 0.0f};
 	Vector3 cameraTranslate = {0.0f, 1.9f, -6.49f};
 
-	// 平面
+	
 	Plane plane{
 	    {0.0f, 1.0f, 0.0f},
         1.0f
     };
 
-	// 線分
+	
 	Segment segment{
-	    {-2.0f, 1.0f,  0.0f}, // origin
-	    {3.0f,  -2.0f, 0.0f}  // diff
+	    {-2.0f, 1.0f,  0.0f}, 
+	    {3.0f,  -2.0f, 0.0f}  
 	};
 
 	// ウィンドウの×ボタンが押されるまでループ
@@ -338,7 +338,7 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 		DrawGrid(viewProjectionMatrix, viewportMatrix);
 		DrawPlane(plane, viewProjectionMatrix, viewportMatrix, 0xFFFFFFFF);
 
-		// 衝突時は赤、非衝突時は白
+		
 		uint32_t segColor = segHit ? 0xFF0000FF : 0xFFFFFFFF;
 		DrawSegment(segment, viewProjectionMatrix, viewportMatrix, segColor);
 
