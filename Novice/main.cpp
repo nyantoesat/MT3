@@ -17,19 +17,14 @@ struct Matrix4x4 {
 	float m[4][4];
 };
 
-struct Sphere {
-	Vector3 center;
-	float radius;
-};
-
 struct Segment {
 	Vector3 origin;
 	Vector3 diff;
 };
 
 struct Plane {
-	Vector3 normal; 
-	float distance; 
+	Vector3 normal;
+	float distance;
 };
 
 Vector3 Add(const Vector3& a, const Vector3& b) { return {a.x + b.x, a.y + b.y, a.z + b.z}; }
@@ -209,40 +204,22 @@ Matrix4x4 Inverse(const Matrix4x4& m) {
 	return r;
 }
 
-Vector3 Project(const Vector3& v1, const Vector3& v2) {
-	float v2LenSq = Dot(v2, v2);
-	float t = Dot(v1, v2) / v2LenSq;
-	return Multiply(t, v2);
-}
-
-Vector3 ClosestPoint(const Vector3& point, const Segment& segment) {
-	Vector3 v = Subtract(point, segment.origin);
-	float t = Dot(v, segment.diff) / Dot(segment.diff, segment.diff);
-	if (t < 0.0f)
-		t = 0.0f;
-	if (t > 1.0f)
-		t = 1.0f;
-	return Add(segment.origin, Multiply(t, segment.diff));
-}
-
-bool IsCollision(const Sphere& s1, const Sphere& s2) {
-	Vector3 d = Subtract(s1.center, s2.center);
-	float distSq = Dot(d, d);
-	float rSum = s1.radius + s2.radius;
-	return distSq <= rSum * rSum;
-}
-
-bool IsCollision(const Sphere& sphere, const Plane& plane) {
-	float dist = std::fabs(Dot(plane.normal, sphere.center) - plane.distance);
-	return dist <= sphere.radius;
+// 線分と平面の衝突判定
+bool IsCollision(const Segment& segment, const Plane& plane) {
+	float denom = Dot(plane.normal, segment.diff);
+	if (std::fabs(denom) < 1e-6f) {
+		return false;
+	}
+	float t = (plane.distance - Dot(plane.normal, segment.origin)) / denom;
+	return t >= 0.0f && t <= 1.0f;
 }
 
 void DrawPlane(const Plane& plane, const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMatrix, uint32_t color) {
-	Vector3 center = Multiply(plane.distance, plane.normal); 
+	Vector3 center = Multiply(plane.distance, plane.normal);
 	Vector3 perpendiculars[4];
-	perpendiculars[0] = Normalize(Perpendicular(plane.normal));                            
+	perpendiculars[0] = Normalize(Perpendicular(plane.normal));
 	perpendiculars[1] = {-perpendiculars[0].x, -perpendiculars[0].y, -perpendiculars[0].z};
-	perpendiculars[2] = Cross(plane.normal, perpendiculars[0]);                            
+	perpendiculars[2] = Cross(plane.normal, perpendiculars[0]);
 	perpendiculars[3] = {-perpendiculars[2].x, -perpendiculars[2].y, -perpendiculars[2].z};
 
 	Vector3 points[4];
@@ -257,21 +234,24 @@ void DrawPlane(const Plane& plane, const Matrix4x4& viewProjectionMatrix, const 
 	Novice::DrawLine(int(points[3].x), int(points[3].y), int(points[0].x), int(points[0].y), color);
 }
 
+void DrawSegment(const Segment& segment, const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMatrix, uint32_t color) {
+	Vector3 worldEnd = Add(segment.origin, segment.diff);
+	Vector3 screenStart = Transform(Transform(segment.origin, viewProjectionMatrix), viewportMatrix);
+	Vector3 screenEnd = Transform(Transform(worldEnd, viewProjectionMatrix), viewportMatrix);
+	Novice::DrawLine(int(screenStart.x), int(screenStart.y), int(screenEnd.x), int(screenEnd.y), color);
+}
+
 void DrawGrid(const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMatrix) {
-	const float kGridHalfWidth = 2.0f;                                      
-	const uint32_t kSubdivision = 10;                                       
-	const float kGridEvery = (kGridHalfWidth * 2.0f) / float(kSubdivision); 
+	const float kGridHalfWidth = 2.0f;
+	const uint32_t kSubdivision = 10;
+	const float kGridEvery = (kGridHalfWidth * 2.0f) / float(kSubdivision);
 
 	for (uint32_t xIndex = 0; xIndex <= kSubdivision; ++xIndex) {
 		float x = -kGridHalfWidth + kGridEvery * float(xIndex);
 		Vector3 worldStart = {x, 0.0f, -kGridHalfWidth};
 		Vector3 worldEnd = {x, 0.0f, kGridHalfWidth};
-
-		Vector3 ndcStart = Transform(worldStart, viewProjectionMatrix);
-		Vector3 ndcEnd = Transform(worldEnd, viewProjectionMatrix);
-		Vector3 screenStart = Transform(ndcStart, viewportMatrix);
-		Vector3 screenEnd = Transform(ndcEnd, viewportMatrix);
-
+		Vector3 screenStart = Transform(Transform(worldStart, viewProjectionMatrix), viewportMatrix);
+		Vector3 screenEnd = Transform(Transform(worldEnd, viewProjectionMatrix), viewportMatrix);
 		unsigned int color = (xIndex == kSubdivision / 2) ? 0x000000FF : 0xAAAAAAFF;
 		Novice::DrawLine(int(screenStart.x), int(screenStart.y), int(screenEnd.x), int(screenEnd.y), color);
 	}
@@ -280,49 +260,10 @@ void DrawGrid(const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMa
 		float z = -kGridHalfWidth + kGridEvery * float(zIndex);
 		Vector3 worldStart = {-kGridHalfWidth, 0.0f, z};
 		Vector3 worldEnd = {kGridHalfWidth, 0.0f, z};
-
-		Vector3 ndcStart = Transform(worldStart, viewProjectionMatrix);
-		Vector3 ndcEnd = Transform(worldEnd, viewProjectionMatrix);
-		Vector3 screenStart = Transform(ndcStart, viewportMatrix);
-		Vector3 screenEnd = Transform(ndcEnd, viewportMatrix);
-
+		Vector3 screenStart = Transform(Transform(worldStart, viewProjectionMatrix), viewportMatrix);
+		Vector3 screenEnd = Transform(Transform(worldEnd, viewProjectionMatrix), viewportMatrix);
 		unsigned int color = (zIndex == kSubdivision / 2) ? 0x000000FF : 0xAAAAAAFF;
 		Novice::DrawLine(int(screenStart.x), int(screenStart.y), int(screenEnd.x), int(screenEnd.y), color);
-	}
-}
-
-void DrawSphere(const Sphere& sphere, const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMatrix, uint32_t color) {
-	const uint32_t kSubdivision = 16;
-	const float kPi = 3.14159265358979323846f;
-	const float kLonEvery = 2.0f * kPi / float(kSubdivision);
-	const float kLatEvery = kPi / float(kSubdivision);        
-
-	for (uint32_t latIndex = 0; latIndex < kSubdivision; ++latIndex) {
-		float lat = -kPi / 2.0f + kLatEvery * float(latIndex);
-
-		for (uint32_t lonIndex = 0; lonIndex < kSubdivision; ++lonIndex) {
-			float lon = kLonEvery * float(lonIndex);
-
-			Vector3 a, b, c;
-			a.x = sphere.center.x + sphere.radius * std::cos(lat) * std::cos(lon);
-			a.y = sphere.center.y + sphere.radius * std::sin(lat);
-			a.z = sphere.center.z + sphere.radius * std::cos(lat) * std::sin(lon);
-
-			b.x = sphere.center.x + sphere.radius * std::cos(lat + kLatEvery) * std::cos(lon);
-			b.y = sphere.center.y + sphere.radius * std::sin(lat + kLatEvery);
-			b.z = sphere.center.z + sphere.radius * std::cos(lat + kLatEvery) * std::sin(lon);
-
-			c.x = sphere.center.x + sphere.radius * std::cos(lat) * std::cos(lon + kLonEvery);
-			c.y = sphere.center.y + sphere.radius * std::sin(lat);
-			c.z = sphere.center.z + sphere.radius * std::cos(lat) * std::sin(lon + kLonEvery);
-
-			Vector3 sa = Transform(Transform(a, viewProjectionMatrix), viewportMatrix);
-			Vector3 sb = Transform(Transform(b, viewProjectionMatrix), viewportMatrix);
-			Vector3 sc = Transform(Transform(c, viewProjectionMatrix), viewportMatrix);
-
-			Novice::DrawLine(int(sa.x), int(sa.y), int(sb.x), int(sb.y), color);
-			Novice::DrawLine(int(sa.x), int(sa.y), int(sc.x), int(sc.y), color);
-		}
 	}
 }
 
@@ -341,15 +282,17 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 	Vector3 cameraRotate = {0.26f, 0.0f, 0.0f};
 	Vector3 cameraTranslate = {0.0f, 1.9f, -6.49f};
 
-	// 球と平面
-	Sphere sphere{
-	    {0.0f, 0.0f, 0.0f},
-        0.5f
-    };
+	// 平面
 	Plane plane{
 	    {0.0f, 1.0f, 0.0f},
         1.0f
     };
+
+	// 線分
+	Segment segment{
+	    {-2.0f, 1.0f,  0.0f}, // origin
+	    {3.0f,  -2.0f, 0.0f}  // diff
+	};
 
 	// ウィンドウの×ボタンが押されるまでループ
 	while (Novice::ProcessMessage() == 0) {
@@ -373,16 +316,16 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 		ImGui::Begin("Window");
 		ImGui::DragFloat3("CameraTranslate", &cameraTranslate.x, 0.01f);
 		ImGui::DragFloat3("CameraRotate", &cameraRotate.x, 0.01f);
-		ImGui::DragFloat3("Sphere.Center", &sphere.center.x, 0.01f);
-		ImGui::DragFloat("Sphere.Radius", &sphere.radius, 0.01f);
 		ImGui::DragFloat3("Plane.Normal", &plane.normal.x, 0.01f);
 		ImGui::DragFloat("Plane.Distance", &plane.distance, 0.01f);
+		ImGui::DragFloat3("Segment.Origin", &segment.origin.x, 0.01f);
+		ImGui::DragFloat3("Segment.Diff", &segment.diff.x, 0.01f);
 		ImGui::End();
 
 		plane.normal = Normalize(plane.normal);
 
-		// 球と平面の衝突判定
-		bool hit = IsCollision(sphere, plane);
+		// 線分と平面の衝突判定
+		bool segHit = IsCollision(segment, plane);
 
 		///
 		/// ↑更新処理ここまで
@@ -393,10 +336,11 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 		///
 
 		DrawGrid(viewProjectionMatrix, viewportMatrix);
-		DrawPlane(plane, viewProjectionMatrix, viewportMatrix, 0xFFFFFFFF );
-	
-		uint32_t sphereColor = hit ? 0xFF0000FF : 0xFFFFFFFF ;
-		DrawSphere(sphere, viewProjectionMatrix, viewportMatrix, sphereColor);
+		DrawPlane(plane, viewProjectionMatrix, viewportMatrix, 0xFFFFFFFF);
+
+		// 衝突時は赤、非衝突時は白
+		uint32_t segColor = segHit ? 0xFF0000FF : 0xFFFFFFFF;
+		DrawSegment(segment, viewProjectionMatrix, viewportMatrix, segColor);
 
 		///
 		/// ↑描画処理ここまで
