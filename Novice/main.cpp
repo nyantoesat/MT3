@@ -1,9 +1,7 @@
 #define _USE_MATH_DEFINES
 #include <Novice.h>
-#include <algorithm>
 #include <cmath>
 #include <imgui.h>
-#include <stdio.h>
 
 const char kWindowTitle[] = "GC2B_03_ニャン_トー_セッ";
 const int kWindowHeight = 720;
@@ -24,9 +22,7 @@ struct Sphere {
 	float radius;
 };
 
-Vector3 Add(const Vector3& a, const Vector3& b) { return {a.x + b.x, a.y + b.y, a.z + b.z}; }
 float LengthSquared(const Vector3& v) { return v.x * v.x + v.y * v.y + v.z * v.z; }
-Vector3 Scale(const Vector3& v, float s) { return {v.x * s, v.y * s, v.z * s}; }
 float Length(const Vector3& v) { return sqrtf(LengthSquared(v)); }
 
 Matrix4x4 Multiply(const Matrix4x4& a, const Matrix4x4& b) {
@@ -41,6 +37,13 @@ Matrix4x4 Multiply(const Matrix4x4& a, const Matrix4x4& b) {
 Matrix4x4 MakeTranslateMatrix(const Vector3& t) {
 	Matrix4x4 m = {
 	    {{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}, {t.x, t.y, t.z, 1}}
+    };
+	return m;
+}
+
+Matrix4x4 MakeScaleMatrix(const Vector3& s) {
+	Matrix4x4 m = {
+	    {{s.x, 0, 0, 0}, {0, s.y, 0, 0}, {0, 0, s.z, 0}, {0, 0, 0, 1}}
     };
 	return m;
 }
@@ -67,6 +70,13 @@ Matrix4x4 MakeRotateZMatrix(float angle) {
 	    {{c, s, 0, 0}, {-s, c, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}
     };
 	return m;
+}
+
+Matrix4x4 MakeAffineMatrix(const Vector3& scale, const Vector3& rotate, const Vector3& translate) {
+	Matrix4x4 S = MakeScaleMatrix(scale);
+	Matrix4x4 R = Multiply(Multiply(MakeRotateXMatrix(rotate.x), MakeRotateYMatrix(rotate.y)), MakeRotateZMatrix(rotate.z));
+	Matrix4x4 T = MakeTranslateMatrix(translate);
+	return Multiply(Multiply(S, R), T);
 }
 
 Matrix4x4 MakePerspectiveFovMatrix(float fovY, float aspect, float nearZ, float farZ) {
@@ -160,14 +170,6 @@ void DrawGrid(const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMa
 	}
 }
 
-Vector3 Lerp(const Vector3& v1, const Vector3& v2, float t) {
-	return {
-	    v1.x + (v2.x - v1.x) * t,
-	    v1.y + (v2.y - v1.y) * t,
-	    v1.z + (v2.z - v1.z) * t,
-	};
-}
-
 void DrawSphere(const Sphere& sphere, const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMatrix, uint32_t color) {
 	const int kLatDiv = 8;
 	const int kLonDiv = 8;
@@ -177,21 +179,9 @@ void DrawSphere(const Sphere& sphere, const Matrix4x4& viewProjectionMatrix, con
 		for (int lon = 0; lon < kLonDiv; lon++) {
 			float phi0 = 2.0f * kPi * float(lon) / float(kLonDiv);
 			float phi1 = 2.0f * kPi * float(lon + 1) / float(kLonDiv);
-			Vector3 a = {
-			    sphere.center.x + sphere.radius * cosf(theta0) * cosf(phi0),
-			    sphere.center.y + sphere.radius * sinf(theta0),
-			    sphere.center.z + sphere.radius * cosf(theta0) * sinf(phi0),
-			};
-			Vector3 b = {
-			    sphere.center.x + sphere.radius * cosf(theta1) * cosf(phi0),
-			    sphere.center.y + sphere.radius * sinf(theta1),
-			    sphere.center.z + sphere.radius * cosf(theta1) * sinf(phi0),
-			};
-			Vector3 c = {
-			    sphere.center.x + sphere.radius * cosf(theta0) * cosf(phi1),
-			    sphere.center.y + sphere.radius * sinf(theta0),
-			    sphere.center.z + sphere.radius * cosf(theta0) * sinf(phi1),
-			};
+			Vector3 a = {sphere.center.x + sphere.radius * cosf(theta0) * cosf(phi0), sphere.center.y + sphere.radius * sinf(theta0), sphere.center.z + sphere.radius * cosf(theta0) * sinf(phi0)};
+			Vector3 b = {sphere.center.x + sphere.radius * cosf(theta1) * cosf(phi0), sphere.center.y + sphere.radius * sinf(theta1), sphere.center.z + sphere.radius * cosf(theta1) * sinf(phi0)};
+			Vector3 c = {sphere.center.x + sphere.radius * cosf(theta0) * cosf(phi1), sphere.center.y + sphere.radius * sinf(theta0), sphere.center.z + sphere.radius * cosf(theta0) * sinf(phi1)};
 			Vector3 sa = Transform(Transform(a, viewProjectionMatrix), viewportMatrix);
 			Vector3 sb = Transform(Transform(b, viewProjectionMatrix), viewportMatrix);
 			Vector3 sc = Transform(Transform(c, viewProjectionMatrix), viewportMatrix);
@@ -201,31 +191,27 @@ void DrawSphere(const Sphere& sphere, const Matrix4x4& viewProjectionMatrix, con
 	}
 }
 
-void DrawBezier(const Vector3& controlPoint0, const Vector3& controlPoint1, const Vector3& controlPoint2, const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMatrix, uint32_t color) {
-	const int kDivision = 32;
-	Vector3 prev = controlPoint0;
-	for (int i = 1; i <= kDivision; i++) {
-		float t = float(i) / float(kDivision);
-		Vector3 p01 = Lerp(controlPoint0, controlPoint1, t);
-		Vector3 p12 = Lerp(controlPoint1, controlPoint2, t);
-		Vector3 point = Lerp(p01, p12, t);
-		Vector3 s = Transform(Transform(prev, viewProjectionMatrix), viewportMatrix);
-		Vector3 e = Transform(Transform(point, viewProjectionMatrix), viewportMatrix);
-		Novice::DrawLine((int)s.x, (int)s.y, (int)e.x, (int)e.y, color);
-		prev = point;
-	}
-}
-
 int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 	Novice::Initialize(kWindowTitle, kWindowWidth, kWindowHeight);
 
 	Vector3 cameraTranslate{0.0f, 1.9f, -6.49f};
 	Vector3 cameraRotate{0.26f, 0.0f, 0.0f};
 
-	Vector3 controlPoints[3] = {
-	    {-0.8f, 0.58f, 1.0f },
-	    {1.76f, 1.0f,  -0.3f},
-	    {0.94f, -0.7f, 2.3f },
+	// 階層構造：[0]=肩, [1]=肘, [2]=手
+	Vector3 translates[3] = {
+	    {0.2f, 1.0f, 0.0f},
+	    {0.4f, 0.0f, 0.0f},
+	    {0.3f, 0.0f, 0.0f},
+	};
+	Vector3 rotates[3] = {
+	    {0.0f, 0.0f, -6.8f},
+	    {0.0f, 0.0f, -1.4f},
+	    {0.0f, 0.0f, 0.0f },
+	};
+	Vector3 scales[3] = {
+	    {1.0f, 1.0f, 1.0f},
+	    {1.0f, 1.0f, 1.0f},
+	    {1.0f, 1.0f, 1.0f},
 	};
 
 	char keys[256] = {0};
@@ -242,11 +228,33 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 		///
 
 		ImGui::Begin("Window");
-		ImGui::Text("Bezier Control Points");
-		ImGui::DragFloat3("CP0", &controlPoints[0].x, 0.01f);
-		ImGui::DragFloat3("CP1", &controlPoints[1].x, 0.01f);
-		ImGui::DragFloat3("CP2", &controlPoints[2].x, 0.01f);
+
+		ImGui::SeparatorText("Shoulder [0]");
+		ImGui::DragFloat3("translate[0]", &translates[0].x, 0.01f);
+		ImGui::DragFloat3("rotate[0]", &rotates[0].x, 0.01f);
+		ImGui::DragFloat3("scale[0]", &scales[0].x, 0.01f);
+
+		ImGui::SeparatorText("Elbow [1]");
+		ImGui::DragFloat3("translate[1]", &translates[1].x, 0.01f);
+		ImGui::DragFloat3("rotate[1]", &rotates[1].x, 0.01f);
+		ImGui::DragFloat3("scale[1]", &scales[1].x, 0.01f);
+
+		ImGui::SeparatorText("Hand [2]");
+		ImGui::DragFloat3("translate[2]", &translates[2].x, 0.01f);
+		ImGui::DragFloat3("rotate[2]", &rotates[2].x, 0.01f);
+		ImGui::DragFloat3("scale[2]", &scales[2].x, 0.01f);
+
 		ImGui::End();
+
+		// 階層行列を計算
+		Matrix4x4 worldShoulder = MakeAffineMatrix(scales[0], rotates[0], translates[0]);
+		Matrix4x4 worldElbow = Multiply(MakeAffineMatrix(scales[1], rotates[1], translates[1]), worldShoulder);
+		Matrix4x4 worldHand = Multiply(MakeAffineMatrix(scales[2], rotates[2], translates[2]), worldElbow);
+
+		// 各関節のワールド座標
+		Vector3 posShoulder = Transform({0, 0, 0}, worldShoulder);
+		Vector3 posElbow = Transform({0, 0, 0}, worldElbow);
+		Vector3 posHand = Transform({0, 0, 0}, worldHand);
 
 		Matrix4x4 cameraRotateMatrix = Multiply(Multiply(MakeRotateXMatrix(cameraRotate.x), MakeRotateYMatrix(cameraRotate.y)), MakeRotateZMatrix(cameraRotate.z));
 		Matrix4x4 cameraMatrix = Multiply(cameraRotateMatrix, MakeTranslateMatrix(cameraTranslate));
@@ -265,11 +273,17 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 
 		DrawGrid(viewProjectionMatrix, viewportMatrix);
 
-		DrawBezier(controlPoints[0], controlPoints[1], controlPoints[2], viewProjectionMatrix, viewportMatrix, 0xFFFFFFFF);
+		// 関節間の線：肩-肘、肘-手
+		Vector3 sShoulder = Transform(Transform(posShoulder, viewProjectionMatrix), viewportMatrix);
+		Vector3 sElbow = Transform(Transform(posElbow, viewProjectionMatrix), viewportMatrix);
+		Vector3 sHand = Transform(Transform(posHand, viewProjectionMatrix), viewportMatrix);
+		Novice::DrawLine((int)sShoulder.x, (int)sShoulder.y, (int)sElbow.x, (int)sElbow.y, 0xFFFFFFFF);
+		Novice::DrawLine((int)sElbow.x, (int)sElbow.y, (int)sHand.x, (int)sHand.y, 0xFFFFFFFF);
 
-		for (int i = 0; i < 3; i++) {
-			DrawSphere({controlPoints[i], 0.01f}, viewProjectionMatrix, viewportMatrix, 0x000000FF);
-		}
+		// 肩：赤、肘：緑、手：青
+		DrawSphere({posShoulder, 0.05f}, viewProjectionMatrix, viewportMatrix, 0xFF0000FF);
+		DrawSphere({posElbow, 0.05f}, viewProjectionMatrix, viewportMatrix, 0x00FF00FF);
+		DrawSphere({posHand, 0.05f}, viewProjectionMatrix, viewportMatrix, 0x0000FFFF);
 
 		///
 		/// ↑描画処理ここまで
