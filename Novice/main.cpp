@@ -266,8 +266,8 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 	ball.radius = 0.05f;
 	ball.color = BLUE;
 
-	const float kOrbitRadius = 1.2f;       // distance from the anchor
-	const float kOrbitAngularSpeed = 2.0f; // radians per second
+	const float kOrbitRadius = 0.8f;      // distance from the anchor
+	const float kOrbitAngularSpeed = kPi; // radians per second
 	float orbitAngle = 0.0f;
 
 	bool isStarted = false;
