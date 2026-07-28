@@ -1,7 +1,10 @@
-#define _USE_MATH_DEFINES
+#define NOMINMAX
 #include <Novice.h>
+#include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <imgui.h>
+
 
 const char kWindowTitle[] = "GC2B_03_ニャン_トー_セッ";
 const float kPi = 3.14159265358979323846f;
@@ -17,6 +20,12 @@ struct Vector3 {
 	Vector3 operator-(const Vector3& v) const { return {x - v.x, y - v.y, z - v.z}; }
 	Vector3 operator*(float s) const { return {x * s, y * s, z * s}; }
 	Vector3 operator/(float s) const { return {x / s, y / s, z / s}; }
+	Vector3& operator+=(const Vector3& v) {
+		x += v.x;
+		y += v.y;
+		z += v.z;
+		return *this;
+	}
 };
 
 Vector3 Cross(const Vector3& a, const Vector3& b) { return {a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x}; }
@@ -49,7 +58,7 @@ Matrix4x4 MakeIdentity4x4() {
 	return r;
 }
 
-
+// Gauss-Jordan elimination on the augmented [ M | I ] matrix
 Matrix4x4 Inverse(const Matrix4x4& mat) {
 	float a[4][8];
 	for (int i = 0; i < 4; i++) {
@@ -213,6 +222,62 @@ void DrawGrid(const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMa
 	}
 }
 
+struct Ball {
+	Vector3 position;     // ボールの位置
+	Vector3 velocity;     // ボールの速度
+	Vector3 acceleration; // ボールの加速度
+	float mass;           // ボールの質量
+	float radius;         // ボールの半径
+	unsigned int color;   // ボールの色
+};
+
+struct Sphere {
+	Vector3 center;
+	float radius;
+};
+
+struct Plane {
+	Vector3 normal; // 法線
+	float distance; // 原点からの距離
+};
+
+// 平面上の代表点（法線と距離から逆算した点）を中心に、
+// 法線に直交する2軸を作って四角いパネルとして描画する
+void DrawPlane(const Plane& plane, const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMatrix, unsigned int color) {
+	Vector3 center = plane.normal * plane.distance;
+
+	// 法線と直交する2つの軸(u, v)を作る
+	Vector3 u = Cross(plane.normal, {0.0f, 1.0f, 0.0f});
+	if (Length(u) < 1e-6f) {
+		u = Cross(plane.normal, {1.0f, 0.0f, 0.0f});
+	}
+	u = Normalize(u);
+	Vector3 v = Normalize(Cross(plane.normal, u));
+
+	// 4隅を ±u ±v の組み合わせで求めると、ちゃんとした正方形になる
+	const float kPlaneHalfSize = 1.2f;
+	Vector3 uExtend = u * kPlaneHalfSize;
+	Vector3 vExtend = v * kPlaneHalfSize;
+
+	Vector3 corners[4] = {
+	    center + uExtend + vExtend,
+	    center + uExtend - vExtend,
+	    center - uExtend - vExtend,
+	    center - uExtend + vExtend,
+	};
+
+	Vector3 points[4];
+	for (int32_t index = 0; index < 4; ++index) {
+		points[index] = Transform(Transform(corners[index], viewProjectionMatrix), viewportMatrix);
+	}
+
+	// 隣り合う頂点同士を順番に結ぶと、正方形の外周になる
+	for (int32_t index = 0; index < 4; ++index) {
+		int32_t next = (index + 1) % 4;
+		Novice::DrawLine(int(points[index].x), int(points[index].y), int(points[next].x), int(points[next].y), color);
+	}
+}
+
 void DrawSphere(const Vector3& center, float radius, const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMatrix, unsigned int color) {
 	const uint32_t kSubdivision = 16;
 	const float kLatEvery = kPi / float(kSubdivision);
@@ -237,14 +302,17 @@ void DrawSphere(const Vector3& center, float radius, const Matrix4x4& viewProjec
 	}
 }
 
-// 振り子を表す構造体
-struct Pendulum {
-	Vector3 anchor;            // アンカーポイント。固定された端の位置
-	float length;              // 紐の長さ
-	float angle;               // 現在の角度
-	float angularVelocity;     // 角速度ω
-	float angularAcceleration; // 角加速度
-};
+// 球と平面の衝突判定（球の中心と平面の符号付き距離が半径以内かどうか）
+bool IsCollision(const Sphere& sphere, const Plane& plane) {
+	float distance = Dot(plane.normal, sphere.center) - plane.distance;
+	return std::fabs(distance) <= sphere.radius;
+}
+
+// 平面に対する反射ベクトルを求める
+Vector3 Reflect(const Vector3& input, const Vector3& normal) { return input - normal * (2.0f * Dot(input, normal)); }
+
+// vをnormal方向に射影したベクトルを求める
+Vector3 Project(const Vector3& v, const Vector3& normal) { return normal * Dot(v, normal); }
 
 int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 	Novice::Initialize(kWindowTitle, kWindowWidth, kWindowHeight);
@@ -252,22 +320,23 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 	char keys[256] = {0};
 	char preKeys[256] = {0};
 
-	// Camera transform (world position/rotation of the camera itself)
 	Vector3 cameraTranslate{0.0f, 1.9f, -6.49f};
 	Vector3 cameraRotate{0.26f, 0.0f, 0.0f};
 
 	const float kDeltaTime = 1.0f / 60.0f;
 
-	// 振り子の初期値（課題実装例の通り）
-	Pendulum pendulum;
-	pendulum.anchor = {0.0f, 1.0f, 0.0f};
-	pendulum.length = 0.8f;
-	pendulum.angle = 0.7f;
-	pendulum.angularVelocity = 0.0f;
-	pendulum.angularAcceleration = 0.0f;
+	// スライドの初期値通り
+	Plane plane{};
+	plane.normal = Normalize({-0.2f, 0.9f, -0.3f});
+	plane.distance = 0.0f;
 
-	const float kBallRadius = 0.05f;
-	const unsigned int kBallColor = BLUE;
+	Ball ball{};
+	ball.position = {0.8f, 1.2f, 0.3f};
+	ball.mass = 2.0f;
+	ball.radius = 0.05f;
+	ball.color = WHITE;
+
+	float e = 0.8f; // 反発係数
 
 	bool isStarted = false;
 
@@ -287,16 +356,26 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 		Matrix4x4 viewportMatrix = MakeViewportMatrix(0.0f, 0.0f, float(kWindowWidth), float(kWindowHeight), 0.0f, 1.0f);
 
 		if (isStarted) {
-			pendulum.angularAcceleration = -(9.8f / pendulum.length) * std::sin(pendulum.angle);
-			pendulum.angularVelocity += pendulum.angularAcceleration * kDeltaTime;
-			pendulum.angle += pendulum.angularVelocity * kDeltaTime;
-		}
+			// 重力加速度のみがかかる
+			ball.acceleration = {0.0f, -9.8f, 0.0f};
 
-		// θ=0のとき(0,-1)方向を指すように振り子先端の位置を計算
-		Vector3 ballPosition;
-		ballPosition.x = pendulum.anchor.x + std::sin(pendulum.angle) * pendulum.length;
-		ballPosition.y = pendulum.anchor.y - std::cos(pendulum.angle) * pendulum.length;
-		ballPosition.z = pendulum.anchor.z;
+			ball.velocity += ball.acceleration * kDeltaTime;
+			ball.position += ball.velocity * kDeltaTime;
+
+			if (IsCollision(Sphere{ball.position, ball.radius}, plane)) {
+				// 反射ベクトルを求め、法線方向にだけ反発係数による減衰を入れる
+				Vector3 reflected = Reflect(ball.velocity, plane.normal);
+				Vector3 projectToNormal = Project(reflected, plane.normal);
+				Vector3 movingDirection = reflected - projectToNormal;
+				ball.velocity = projectToNormal * e + movingDirection;
+
+				// めり込んだ分だけ、平面の外側へ押し戻す（少し対処してみるスライド参照）
+				float penetration = ball.radius - (Dot(plane.normal, ball.position) - plane.distance);
+				if (penetration > 0.0f) {
+					ball.position += plane.normal * penetration;
+				}
+			}
+		}
 
 		///
 		/// ↑更新処理ここまで
@@ -307,20 +386,17 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 		///
 
 		DrawGrid(viewProjectionMatrix, viewportMatrix);
-
-		// 紐の描画（アンカーからボール位置まで直線を引く）
-		{
-			Vector3 anchorScreen = Transform(Transform(pendulum.anchor, viewProjectionMatrix), viewportMatrix);
-			Vector3 ballScreen = Transform(Transform(ballPosition, viewProjectionMatrix), viewportMatrix);
-			Novice::DrawLine(int(anchorScreen.x), int(anchorScreen.y), int(ballScreen.x), int(ballScreen.y), WHITE);
-		}
-
-		DrawSphere(ballPosition, kBallRadius, viewProjectionMatrix, viewportMatrix, kBallColor);
+		DrawPlane(plane, viewProjectionMatrix, viewportMatrix, WHITE);
+		DrawSphere(ball.position, ball.radius, viewProjectionMatrix, viewportMatrix, ball.color);
 
 		ImGui::Begin("Window");
 		if (ImGui::Button("Start")) {
+			ball.position = {0.8f, 1.2f, 0.3f};
+			ball.velocity = {0.0f, 0.0f, 0.0f};
+			ball.acceleration = {0.0f, 0.0f, 0.0f};
 			isStarted = true;
 		}
+		ImGui::SliderFloat("Restitution (e)", &e, 0.0f, 1.0f);
 		ImGui::End();
 
 		///
