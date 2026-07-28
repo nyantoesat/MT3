@@ -20,12 +20,6 @@ struct Vector3 {
 	Vector3 operator-(const Vector3& v) const { return {x - v.x, y - v.y, z - v.z}; }
 	Vector3 operator*(float s) const { return {x * s, y * s, z * s}; }
 	Vector3 operator/(float s) const { return {x / s, y / s, z / s}; }
-	Vector3& operator+=(const Vector3& v) {
-		x += v.x;
-		y += v.y;
-		z += v.z;
-		return *this;
-	}
 };
 
 Vector3 Cross(const Vector3& a, const Vector3& b) { return {a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x}; }
@@ -222,6 +216,13 @@ void DrawGrid(const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMa
 	}
 }
 
+struct Spring {
+	Vector3 anchor;           // アンカー。固定された端の位置
+	float naturalLength;      // 自然長
+	float stiffness;          // 剛性。バネ定数k
+	float dampingCoefficient; // 減衰係数
+};
+
 struct Ball {
 	Vector3 position;     // ボールの位置
 	Vector3 velocity;     // ボールの速度
@@ -230,53 +231,6 @@ struct Ball {
 	float radius;         // ボールの半径
 	unsigned int color;   // ボールの色
 };
-
-struct Sphere {
-	Vector3 center;
-	float radius;
-};
-
-struct Plane {
-	Vector3 normal; // 法線
-	float distance; // 原点からの距離
-};
-
-// 平面上の代表点（法線と距離から逆算した点）を中心に、
-// 法線に直交する2軸を作って四角いパネルとして描画する
-void DrawPlane(const Plane& plane, const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMatrix, unsigned int color) {
-	Vector3 center = plane.normal * plane.distance;
-
-	// 法線と直交する2つの軸(u, v)を作る
-	Vector3 u = Cross(plane.normal, {0.0f, 1.0f, 0.0f});
-	if (Length(u) < 1e-6f) {
-		u = Cross(plane.normal, {1.0f, 0.0f, 0.0f});
-	}
-	u = Normalize(u);
-	Vector3 v = Normalize(Cross(plane.normal, u));
-
-	// 4隅を ±u ±v の組み合わせで求めると、ちゃんとした正方形になる
-	const float kPlaneHalfSize = 1.2f;
-	Vector3 uExtend = u * kPlaneHalfSize;
-	Vector3 vExtend = v * kPlaneHalfSize;
-
-	Vector3 corners[4] = {
-	    center + uExtend + vExtend,
-	    center + uExtend - vExtend,
-	    center - uExtend - vExtend,
-	    center - uExtend + vExtend,
-	};
-
-	Vector3 points[4];
-	for (int32_t index = 0; index < 4; ++index) {
-		points[index] = Transform(Transform(corners[index], viewProjectionMatrix), viewportMatrix);
-	}
-
-	// 隣り合う頂点同士を順番に結ぶと、正方形の外周になる
-	for (int32_t index = 0; index < 4; ++index) {
-		int32_t next = (index + 1) % 4;
-		Novice::DrawLine(int(points[index].x), int(points[index].y), int(points[next].x), int(points[next].y), color);
-	}
-}
 
 void DrawSphere(const Vector3& center, float radius, const Matrix4x4& viewProjectionMatrix, const Matrix4x4& viewportMatrix, unsigned int color) {
 	const uint32_t kSubdivision = 16;
@@ -302,41 +256,29 @@ void DrawSphere(const Vector3& center, float radius, const Matrix4x4& viewProjec
 	}
 }
 
-// 球と平面の衝突判定（球の中心と平面の符号付き距離が半径以内かどうか）
-bool IsCollision(const Sphere& sphere, const Plane& plane) {
-	float distance = Dot(plane.normal, sphere.center) - plane.distance;
-	return std::fabs(distance) <= sphere.radius;
-}
-
-// 平面に対する反射ベクトルを求める
-Vector3 Reflect(const Vector3& input, const Vector3& normal) { return input - normal * (2.0f * Dot(input, normal)); }
-
-// vをnormal方向に射影したベクトルを求める
-Vector3 Project(const Vector3& v, const Vector3& normal) { return normal * Dot(v, normal); }
-
 int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 	Novice::Initialize(kWindowTitle, kWindowWidth, kWindowHeight);
 
 	char keys[256] = {0};
 	char preKeys[256] = {0};
 
+	// Camera transform (world position/rotation of the camera itself)
 	Vector3 cameraTranslate{0.0f, 1.9f, -6.49f};
 	Vector3 cameraRotate{0.26f, 0.0f, 0.0f};
 
 	const float kDeltaTime = 1.0f / 60.0f;
 
-	// スライドの初期値通り
-	Plane plane{};
-	plane.normal = Normalize({-0.2f, 0.9f, -0.3f});
-	plane.distance = 0.0f;
+	Spring spring{};
+	spring.anchor = {0.0f, 0.0f, 0.0f};
+	spring.naturalLength = 1.0f;
+	spring.stiffness = 100.0f;
+	spring.dampingCoefficient = 2.0f;
 
 	Ball ball{};
-	ball.position = {0.8f, 1.2f, 0.3f};
+	ball.position = {1.2f, 0.0f, 0.0f};
 	ball.mass = 2.0f;
 	ball.radius = 0.05f;
-	ball.color = WHITE;
-
-	float e = 0.8f; // 反発係数
+	ball.color = BLUE;
 
 	bool isStarted = false;
 
@@ -356,25 +298,25 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 		Matrix4x4 viewportMatrix = MakeViewportMatrix(0.0f, 0.0f, float(kWindowWidth), float(kWindowHeight), 0.0f, 1.0f);
 
 		if (isStarted) {
-			// 重力加速度のみがかかる
-			ball.acceleration = {0.0f, -9.8f, 0.0f};
+			Vector3 diff = ball.position - spring.anchor;
+			float length = Length(diff);
 
-			ball.velocity += ball.acceleration * kDeltaTime;
-			ball.position += ball.velocity * kDeltaTime;
-
-			if (IsCollision(Sphere{ball.position, ball.radius}, plane)) {
-				// 反射ベクトルを求め、法線方向にだけ反発係数による減衰を入れる
-				Vector3 reflected = Reflect(ball.velocity, plane.normal);
-				Vector3 projectToNormal = Project(reflected, plane.normal);
-				Vector3 movingDirection = reflected - projectToNormal;
-				ball.velocity = projectToNormal * e + movingDirection;
-
-				// めり込んだ分だけ、平面の外側へ押し戻す（少し対処してみるスライド参照）
-				float penetration = ball.radius - (Dot(plane.normal, ball.position) - plane.distance);
-				if (penetration > 0.0f) {
-					ball.position += plane.normal * penetration;
-				}
+			Vector3 restoringForce{0.0f, 0.0f, 0.0f};
+			if (length != 0.0f) {
+				Vector3 direction = Normalize(diff);
+				float extension = length - spring.naturalLength;
+				restoringForce = direction * (-spring.stiffness * extension);
 			}
+
+			// 減衰力：速度に比例し、速度と逆向きにはたらく（粘性減衰）
+			Vector3 dampingForce = ball.velocity * (-spring.dampingCoefficient);
+
+			// 復元力と減衰力を合算し、質量で割って加速度を求める
+			Vector3 force = restoringForce + dampingForce;
+			ball.acceleration = force / ball.mass;
+
+			ball.velocity = ball.velocity + ball.acceleration * kDeltaTime;
+			ball.position = ball.position + ball.velocity * kDeltaTime;
 		}
 
 		///
@@ -386,17 +328,21 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 		///
 
 		DrawGrid(viewProjectionMatrix, viewportMatrix);
-		DrawPlane(plane, viewProjectionMatrix, viewportMatrix, WHITE);
+
+		Vector3 anchorScreen = Transform(Transform(spring.anchor, viewProjectionMatrix), viewportMatrix);
+		Vector3 ballScreen = Transform(Transform(ball.position, viewProjectionMatrix), viewportMatrix);
+		Novice::DrawLine(int(anchorScreen.x), int(anchorScreen.y), int(ballScreen.x), int(ballScreen.y), WHITE);
 		DrawSphere(ball.position, ball.radius, viewProjectionMatrix, viewportMatrix, ball.color);
 
 		ImGui::Begin("Window");
 		if (ImGui::Button("Start")) {
-			ball.position = {0.8f, 1.2f, 0.3f};
+			ball.position = {1.2f, 0.0f, 0.0f};
 			ball.velocity = {0.0f, 0.0f, 0.0f};
 			ball.acceleration = {0.0f, 0.0f, 0.0f};
 			isStarted = true;
 		}
-		ImGui::SliderFloat("Restitution (e)", &e, 0.0f, 1.0f);
+		ImGui::SliderFloat("Stiffness (k)", &spring.stiffness, 1.0f, 300.0f);
+		ImGui::SliderFloat("Damping Coefficient", &spring.dampingCoefficient, 0.0f, 20.0f);
 		ImGui::End();
 
 		///
